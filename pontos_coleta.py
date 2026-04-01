@@ -267,12 +267,17 @@ class PontosColeta:
         """Liga ou desliga o SpinBox de distância fixa baseado no estado do CheckBox."""
         self.dlg.spin_dist_fixa.setEnabled(not is_checked)
 
+    def alternar_caixa_distancia_borda(self, is_checked):
+        """Liga ou desliga o SpinBox de distância fixa baseado no estado do CheckBox."""
+        self.dlg.spin_dist_borda_fixa.setEnabled(not is_checked)
+
     def run(self):
             """Executa o processamento quando o plugin é acionado."""
             if self.first_start is True:
                 self.first_start = False
                 self.dlg = PontosColetaDialog()
                 self.dlg.chk_dist_dinamica.toggled.connect(self.alternar_caixa_distancia)
+                self.dlg.chk_dist_borda_dinamica.toggled.connect(self.alternar_caixa_distancia_borda)
 
             self.dlg.cmb_camada.clear()
             camadas = QgsProject.instance().mapLayers().values()
@@ -312,19 +317,24 @@ class PontosColeta:
                     transform_para_origem = QgsCoordinateTransform(crs_calculo, crs_origem, QgsProject.instance())
 
                     # --- CAMADA DE BUFFER (em CRS de cálculo) ---
-                    camada_buffer = QgsVectorLayer(f"MultiPolygon?crs={crs_calculo.authid()}", "Zonas_Manejo_Buffer", "memory")
+                    camada_buffer = QgsVectorLayer(f"MultiPolygon?crs={crs_calculo.authid()}", camada.name() + "_buffer", "memory")
                     pr_buffer = camada_buffer.dataProvider()
                     pr_buffer.addAttributes([QgsField("Area_ha", QVariant.Double), QgsField("ZNM", QVariant.Double)])
                     camada_buffer.updateFields()
 
                     feicoes_buffer = []
+                    coef_calc_dist_borda = self.dlg.spin_coef_calc_dist_borda.value()
+                    self.iface.messageBar().pushMessage("Aviso", f"dist coef para bordas {coef_calc_dist_borda}", level=Qgis.Warning)
+
                     for feat in layer.getFeatures():
                         geom = feat.geometry()
                         geom.transform(transform_para_calculo)
                         
                         valor_znm = feat['ZNM']
                         area_original_ha = geom.area() / 10000.0
-                        distancia_buffer = (area_original_ha / 0.25) * -1
+                        
+                        #FORMULA TAMANHO DO BUFFER DINAMICO
+                        distancia_buffer = (area_original_ha / coef_calc_dist_borda) * -1 if self.dlg.chk_dist_borda_dinamica.isChecked() else self.dlg.spin_dist_borda_fixa.value()
                         geom_buffer = geom.buffer(distancia_buffer, 5)
                         
                         if not geom_buffer.isEmpty():
@@ -335,7 +345,10 @@ class PontosColeta:
                             feicoes_buffer.append(nova_feat)
 
                     pr_buffer.addFeatures(feicoes_buffer)
+                    QgsProject.instance().addMapLayer(camada_buffer) if self.dlg.chk_camada_buffer.isChecked() else None
                     camada_buffer.updateExtents()
+
+
 
                     # --- CAMADA FINAL DE PONTOS (em CRS original) ---
                     camada_final_pontos = QgsVectorLayer(f"Point?crs={crs_origem.authid()}", "Pontos_coleta_total", "memory")
@@ -344,12 +357,16 @@ class PontosColeta:
                     camada_final_pontos.updateFields()
 
                     # --- GERAÇÃO DOS PONTOS ---
+                    coef_calc_dist = self.dlg.spin_coef_calc_dist.value() / 10
+                    self.iface.messageBar().pushMessage("Aviso", f"dist coef entre pontos {coef_calc_dist}", level=Qgis.Warning)
+
                     for feat_buf in camada_buffer.getFeatures():
                         area_util_ha = feat_buf['Area_ha']
                         valor_znm = feat_buf['ZNM']
                         geom_buf = feat_buf.geometry()
-                        
-                        dist_minima_real = (area_util_ha / 0.085) if self.dlg.chk_dist_dinamica.isChecked() else self.dlg.spin_dist_fixa.value()
+
+                        #FORMULA DISTANCIA ENTRE PONTOS
+                        dist_minima_real = (area_util_ha / (coef_calc_dist)) if self.dlg.chk_dist_dinamica.isChecked() else self.dlg.spin_dist_fixa.value()
 
                         temp_layer = QgsVectorLayer(f"Polygon?crs={crs_calculo.authid()}", "temp", "memory")
                         temp_pr = temp_layer.dataProvider()
