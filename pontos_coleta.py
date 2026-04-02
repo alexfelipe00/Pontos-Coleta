@@ -58,18 +58,9 @@ class PontosColeta:
     """QGIS Plugin Implementation."""
 
     def __init__(self, iface):
-        """Constructor.
 
-        :param iface: An interface instance that will be passed to this class
-            which provides the hook by which you can manipulate the QGIS
-            application at run time.
-        :type iface: QgsInterface
-        """
-        # Save reference to the QGIS interface
         self.iface = iface
-        # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
-        # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
         locale_path = os.path.join(
             self.plugin_dir,
@@ -81,51 +72,32 @@ class PontosColeta:
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
 
-        # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Pontos de Coleta')
 
-        # Check if plugin was started the first time in current QGIS session
-        # Must be set in initGui() to survive plugin reloads
         self.first_start = None
 
     @staticmethod
     def get_suitable_utm_zone_for_layer(layer):
-        """
-        Determines the suitable UTM zone for a given QGIS layer.
-    
-        Args:
-            layer: A QgsMapLayer object (e.g., QgsVectorLayer or QgsRasterLayer).
-    
-        Returns:
-            A tuple (epsg_code, crs_name) of the suitable UTM zone, or (None, None) if
-            no suitable zone is found or the layer is invalid.
-        """
+
         if not layer or not layer.isValid():
             print("Invalid layer provided.")
             return None, None
     
-        # 1. Get the layer's extent
         extent = layer.extent()
     
-        # 2. Get the centroid of the layer's extent
         centroid = extent.center()
     
-        # 3. Convert the centroid's coordinates to WGS84 (latitude, longitude)
         source_crs = layer.crs()
         dest_crs = QgsCoordinateReferenceSystem("EPSG:4326") # WGS84
     
-        # Create a coordinate transform object
         transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
     
-        # Transform the centroid point
         wgs84_centroid = transform.transform(centroid)
     
         latitude = wgs84_centroid.y()
         longitude = wgs84_centroid.x()
-    
-        # 4. Use pyproj to determine the UTM zone
-        # pyproj.database.query_utm_crs_info finds suitable UTM zones based on lat/lon
+
         try:
             utm_crs_list = query_utm_crs_info(
                 datum_name="WGS 84",
@@ -141,7 +113,7 @@ class PontosColeta:
             utm_crs_list = []
     
         if utm_crs_list:
-            # The first CRS in the list is usually the most suitable
+
             utm_crs = utm_crs_list[0]
             epsg_code = utm_crs.code
             crs_name = utm_crs.name
@@ -152,17 +124,7 @@ class PontosColeta:
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
-        """Get the translation for a string using Qt translation API.
 
-        We implement this ourselves since we do not inherit QObject.
-
-        :param message: String for translation.
-        :type message: str, QString
-
-        :returns: Translated version of message.
-        :rtype: QString
-        """
-        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('PontosColeta', message)
 
 
@@ -177,45 +139,7 @@ class PontosColeta:
         status_tip=None,
         whats_this=None,
         parent=None):
-        """Add a toolbar icon to the toolbar.
-
-        :param icon_path: Path to the icon for this action. Can be a resource
-            path (e.g. ':/plugins/foo/bar.png') or a normal file system path.
-        :type icon_path: str
-
-        :param text: Text that should be shown in menu items for this action.
-        :type text: str
-
-        :param callback: Function to be called when the action is triggered.
-        :type callback: function
-
-        :param enabled_flag: A flag indicating if the action should be enabled
-            by default. Defaults to True.
-        :type enabled_flag: bool
-
-        :param add_to_menu: Flag indicating whether the action should also
-            be added to the menu. Defaults to True.
-        :type add_to_menu: bool
-
-        :param add_to_toolbar: Flag indicating whether the action should also
-            be added to the toolbar. Defaults to True.
-        :type add_to_toolbar: bool
-
-        :param status_tip: Optional text to show in a popup when mouse pointer
-            hovers over the action.
-        :type status_tip: str
-
-        :param parent: Parent widget for the new action. Defaults None.
-        :type parent: QWidget
-
-        :param whats_this: Optional text to show in the status bar when the
-            mouse pointer hovers over the action.
-
-        :returns: The action that was created. Note that the action is also
-            added to self.actions list.
-        :rtype: QAction
-        """
-
+        
         icon = QIcon(icon_path)
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
@@ -228,7 +152,6 @@ class PontosColeta:
             action.setWhatsThis(whats_this)
 
         if add_to_toolbar:
-            # Adds plugin icon to Plugins toolbar
             self.iface.addToolBarIcon(action)
 
         if add_to_menu:
@@ -241,7 +164,6 @@ class PontosColeta:
         return action
 
     def initGui(self):
-        """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
         icon_path = ':/plugins/pontos_coleta/icon.png'
         self.add_action(
@@ -250,7 +172,6 @@ class PontosColeta:
             callback=self.run,
             parent=self.iface.mainWindow())
 
-        # will be set False in run()
         self.first_start = True
 
 
@@ -271,6 +192,23 @@ class PontosColeta:
         """Liga ou desliga o SpinBox de distância fixa baseado no estado do CheckBox."""
         self.dlg.spin_dist_borda_fixa.setEnabled(not is_checked)
 
+    def atualizar_colunas_id(self):
+        """Populates the 'cmb_coluna_id' with double type columns from the selected layer."""
+        self.dlg.cmb_coluna_id.clear()
+        self.dlg.cmb_coluna_id.addItem("Não adicionar coluna de identificação")
+        camada_id = self.dlg.cmb_camada.currentData()
+        if not camada_id:
+            return
+        
+        layer = QgsProject.instance().mapLayer(camada_id)
+        if not layer:
+            return
+
+        fields = layer.fields()
+        for field in fields:
+            if field.type() == QVariant.Double:
+                self.dlg.cmb_coluna_id.addItem(field.name())
+
     def run(self):
             """Executa o processamento quando o plugin é acionado."""
             if self.first_start is True:
@@ -278,12 +216,16 @@ class PontosColeta:
                 self.dlg = PontosColetaDialog()
                 self.dlg.chk_dist_dinamica.toggled.connect(self.alternar_caixa_distancia)
                 self.dlg.chk_dist_borda_dinamica.toggled.connect(self.alternar_caixa_distancia_borda)
+                self.dlg.cmb_camada.currentIndexChanged.connect(self.atualizar_colunas_id)
+
 
             self.dlg.cmb_camada.clear()
             camadas = QgsProject.instance().mapLayers().values()
             for camada in camadas:
                 if camada.type() == QgsMapLayerType.VectorLayer and camada.geometryType() == QgsWkbTypes.PolygonGeometry:
                     self.dlg.cmb_camada.addItem(camada.name(), camada.id())
+            
+            self.atualizar_colunas_id()
 
             self.dlg.show()
             result = self.dlg.exec_()
@@ -292,13 +234,15 @@ class PontosColeta:
                 try:
                     camada_id = self.dlg.cmb_camada.currentData()
                     layer = QgsProject.instance().mapLayer(camada_id)
+                    id_column_name = self.dlg.cmb_coluna_id.currentText()
+                    add_id_column = id_column_name != 'Não adicionar coluna de identificação'
                     
                     if not layer:
                         self.iface.messageBar().pushMessage("Erro", "Selecione uma camada válida.", level=Qgis.Warning)
                         return
 
-                    if layer.fields().indexOf('ZNM') == -1:
-                        self.iface.messageBar().pushMessage("Erro", "A camada de entrada não possui a coluna 'ZNM'.", level=Qgis.Critical)
+                    if add_id_column and layer.fields().indexOf(id_column_name) == -1:
+                        self.iface.messageBar().pushMessage("Erro", f"A camada de entrada não possui a coluna '{id_column_name}'.", level=Qgis.Critical)
                         return
 
                     qtd_pontos = self.dlg.spin_qtd_pontos.value()
@@ -317,75 +261,83 @@ class PontosColeta:
                     transform_para_origem = QgsCoordinateTransform(crs_calculo, crs_origem, QgsProject.instance())
 
                     # --- CAMADA DE BUFFER (em CRS de cálculo) ---
-                    camada_buffer = QgsVectorLayer(f"MultiPolygon?crs={crs_calculo.authid()}", camada.name() + "_buffer", "memory")
-                    pr_buffer = camada_buffer.dataProvider()
-                    pr_buffer.addAttributes([QgsField("Area_ha", QVariant.Double), QgsField("ZNM", QVariant.Double)])
+                    camada_buffer = QgsVectorLayer(f"MultiPolygon?crs={crs_calculo.authid()}", layer.name() + "_buffer", "memory")
+                    provider_buffer = camada_buffer.dataProvider()
+                    buffer_fields = [QgsField("Area_ha", QVariant.Double)]
+                    if add_id_column:
+                        field_type = layer.fields().field(id_column_name).type()
+                        buffer_fields.append(QgsField(id_column_name, field_type))
+                    provider_buffer.addAttributes(buffer_fields)
                     camada_buffer.updateFields()
 
                     feicoes_buffer = []
                     coef_calc_dist_borda = self.dlg.spin_coef_calc_dist_borda.value()
-                    self.iface.messageBar().pushMessage("Aviso", f"dist coef para bordas {coef_calc_dist_borda}", level=Qgis.Warning)
 
                     for feat in layer.getFeatures():
                         geom = feat.geometry()
                         geom.transform(transform_para_calculo)
-                        
-                        valor_znm = feat['ZNM']
+
                         area_original_ha = geom.area() / 10000.0
                         
                         #FORMULA TAMANHO DO BUFFER DINAMICO
                         distancia_buffer = (area_original_ha / coef_calc_dist_borda) * -1 if self.dlg.chk_dist_borda_dinamica.isChecked() else self.dlg.spin_dist_borda_fixa.value()
-                        geom_buffer = geom.buffer(distancia_buffer, 5)
+                        geom_buffer = geom.buffer(-distancia_buffer, 5)
                         
                         if not geom_buffer.isEmpty():
                             area_util_ha = geom_buffer.area() / 10000.0
                             nova_feat = QgsFeature()
                             nova_feat.setGeometry(geom_buffer)
-                            nova_feat.setAttributes([area_util_ha, valor_znm])
+                            
+                            buffer_attrs = [area_util_ha]
+                            if add_id_column:
+                                buffer_attrs.append(feat[id_column_name])
+                            nova_feat.setAttributes(buffer_attrs)
                             feicoes_buffer.append(nova_feat)
 
-                    pr_buffer.addFeatures(feicoes_buffer)
+                    provider_buffer.addFeatures(feicoes_buffer)
                     QgsProject.instance().addMapLayer(camada_buffer) if self.dlg.chk_camada_buffer.isChecked() else None
                     camada_buffer.updateExtents()
 
 
 
                     # --- CAMADA FINAL DE PONTOS (em CRS original) ---
-                    camada_final_pontos = QgsVectorLayer(f"Point?crs={crs_origem.authid()}", "Pontos_coleta_total", "memory")
-                    pr_pontos = camada_final_pontos.dataProvider()
-                    pr_pontos.addAttributes([QgsField("Area_ha", QVariant.Double), QgsField("Ponto", QVariant.Double, len=18, prec=11)])
+                    camada_final_pontos = QgsVectorLayer(f"Point?crs={crs_origem.authid()}", layer.name() + "_pontos_coleta", "memory")
+                    provider_pontos = camada_final_pontos.dataProvider()
+                    point_fields = [QgsField("Area_ha", QVariant.Double)]
+                    if add_id_column:
+                        point_fields.append(QgsField("Ponto", QVariant.String, len=50))
+                    provider_pontos.addAttributes(point_fields)
                     camada_final_pontos.updateFields()
 
                     # --- GERAÇÃO DOS PONTOS ---
-                    coef_calc_dist = self.dlg.spin_coef_calc_dist.value() / 10
-                    self.iface.messageBar().pushMessage("Aviso", f"dist coef entre pontos {coef_calc_dist}", level=Qgis.Warning)
+                    coef_calc_dist_pontos = self.dlg.spin_coef_calc_dist.value() / 10
 
                     for feat_buf in camada_buffer.getFeatures():
                         area_util_ha = feat_buf['Area_ha']
-                        valor_znm = feat_buf['ZNM']
+                        valor_id = feat_buf[id_column_name] if add_id_column else None
                         geom_buf = feat_buf.geometry()
 
                         #FORMULA DISTANCIA ENTRE PONTOS
-                        dist_minima_real = (area_util_ha / (coef_calc_dist)) if self.dlg.chk_dist_dinamica.isChecked() else self.dlg.spin_dist_fixa.value()
+                        dist_minima_real = (area_util_ha / (coef_calc_dist_pontos)) if self.dlg.chk_dist_dinamica.isChecked() else self.dlg.spin_dist_fixa.value()
 
                         temp_layer = QgsVectorLayer(f"Polygon?crs={crs_calculo.authid()}", "temp", "memory")
-                        temp_pr = temp_layer.dataProvider()
+                        provider_temp = temp_layer.dataProvider()
                         temp_feat = QgsFeature()
                         temp_feat.setGeometry(geom_buf)
-                        temp_pr.addFeatures([temp_feat])
+                        provider_temp.addFeatures([temp_feat])
                         
                         pontos_inseridos = False
                         tentativas = 0
                         dist_atual = float(dist_minima_real)
                         
                         while not pontos_inseridos and tentativas < 10:
-                            parametros_pontos = {
+                            params = {
                                 'INPUT': temp_layer,
                                 'STRATEGY': 0, 'VALUE': qtd_pontos,
                                 'MIN_DISTANCE': dist_atual,
                                 'OUTPUT': 'memory:'
                             }
-                            resultado = processing.run("qgis:randompointsinsidepolygons", parametros_pontos)
+                            resultado = processing.run("qgis:randompointsinsidepolygons", params)
                             pontos_gerados = resultado['OUTPUT']
                             
                             novos_pontos_lista = []
@@ -397,28 +349,31 @@ class PontosColeta:
                                 novo_pt = QgsFeature()
                                 novo_pt.setGeometry(geom_ponto)
                                 
-                                str_znm = str(int(valor_znm)) if valor_znm else "0"
-                                str_num = str(contador_pontos + 1).zfill(2)
-                                valor_ponto_final = float(str_znm + str_num)
+                                point_attrs = [area_util_ha]
+                                if add_id_column:
+                                    str_id = str(int(valor_id)) if valor_id is not None else "0"
+                                    str_num = str(contador_pontos + 1).zfill(2)
+                                    ponto_identificador = str_id + str_num
+                                    point_attrs.append(ponto_identificador)
                                 
-                                novo_pt.setAttributes([area_util_ha, valor_ponto_final])
+                                novo_pt.setAttributes(point_attrs)
                                 novos_pontos_lista.append(novo_pt)
                                 contador_pontos += 1
                             
                             if contador_pontos >= qtd_pontos:
-                                pr_pontos.addFeatures(novos_pontos_lista)
+                                provider_pontos.addFeatures(novos_pontos_lista)
                                 pontos_inseridos = True
                             else:
                                 dist_atual = dist_atual * 0.90
                                 tentativas += 1
                         
                         if not pontos_inseridos and len(novos_pontos_lista) > 0:
-                            pr_pontos.addFeatures(novos_pontos_lista)
+                            provider_pontos.addFeatures(novos_pontos_lista)
 
                     camada_final_pontos.updateExtents()
                     QgsProject.instance().addMapLayer(camada_final_pontos)
 
-                    self.iface.messageBar().pushMessage("Sucesso", "Pontos de coleta gerados com sucesso!", level=Qgis.Success)
+                    self.iface.messageBar().pushMessage("Sucesso", "Camada de pontos de coleta gerada com sucesso!", level=Qgis.Success)
 
                 except Exception as e:
-                    self.iface.messageBar().pushMessage("Erro no processamento", f"Falha ao executar: {str(e)}", level=Qgis.Critical)
+                    self.iface.messageBar().pushMessage("Erro no processamento", f"Falha ao executar o plugin: {str(e)}", level=Qgis.Critical)
