@@ -206,7 +206,7 @@ class PontosColeta:
 
         fields = layer.fields()
         for field in fields:
-            if field.type() == QVariant.Double:
+            if field.type() in (QVariant.Int, QVariant.LongLong, QVariant.Double):
                 self.dlg.cmb_coluna_id.addItem(field.name())
 
     def run(self):
@@ -280,7 +280,7 @@ class PontosColeta:
                         area_original_ha = geom.area() / 10000.0
                         
                         #FORMULA TAMANHO DO BUFFER DINAMICO
-                        distancia_buffer = (area_original_ha / coef_calc_dist_borda) * -1 if self.dlg.chk_dist_borda_dinamica.isChecked() else self.dlg.spin_dist_borda_fixa.value()
+                        distancia_buffer = area_original_ha / coef_calc_dist_borda if self.dlg.chk_dist_borda_dinamica.isChecked() else self.dlg.spin_dist_borda_fixa.value()
                         geom_buffer = geom.buffer(-distancia_buffer, 5)
                         
                         if not geom_buffer.isEmpty():
@@ -303,7 +303,7 @@ class PontosColeta:
                     # --- CAMADA FINAL DE PONTOS (em CRS original) ---
                     camada_final_pontos = QgsVectorLayer(f"Point?crs={crs_origem.authid()}", layer.name() + "_pontos_coleta", "memory")
                     provider_pontos = camada_final_pontos.dataProvider()
-                    point_fields = [QgsField("Area_ha", QVariant.Double)]
+                    point_fields = []
                     if add_id_column:
                         point_fields.append(QgsField("Ponto", QVariant.String, len=50))
                     provider_pontos.addAttributes(point_fields)
@@ -349,7 +349,7 @@ class PontosColeta:
                                 novo_pt = QgsFeature()
                                 novo_pt.setGeometry(geom_ponto)
                                 
-                                point_attrs = [area_util_ha]
+                                point_attrs = []
                                 if add_id_column:
                                     str_id = str(int(valor_id)) if valor_id is not None else "0"
                                     str_num = str(contador_pontos + 1).zfill(2)
